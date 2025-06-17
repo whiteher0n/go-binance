@@ -40,7 +40,6 @@ var (
 // currently future websocket streams are not supported on US domain, so this is set to constantly false
 const UseUSDomain = false
 
-
 func getWsProxyUrl() *string {
 	if ProxyUrl == "" {
 		return nil
@@ -738,7 +737,8 @@ func WsPartialDepthServeWithRate(symbol string, levels int, rate time.Duration, 
 
 // WsDiffDepthServe serve websocket diff. depth handler.
 func WsDiffDepthServe(symbol string, handler WsDepthHandler, errHandler ErrHandler) (doneC, stopC chan struct{}, err error) {
-	return wsDepthServe(symbol, "", nil, handler, errHandler)
+	rate := 500 * time.Millisecond
+	return wsDepthServe(symbol, "", &rate, handler, errHandler)
 }
 
 // WsCombinedDepthServe is similar to WsPartialDepthServe, but it for multiple symbols
