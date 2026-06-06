@@ -30,8 +30,10 @@ type CreateOrderService struct {
 	callbackRate            *string
 	priceProtect            *string
 	newOrderRespType        NewOrderRespType
+	priceMatch              *PriceMatchType
 	closePosition           *string
 	selfTradePreventionMode *SelfTradePreventionMode
+	goodTillDate            int64
 }
 
 // Symbol set symbol
@@ -80,6 +82,12 @@ func (s *CreateOrderService) ReduceOnly(reduceOnly bool) *CreateOrderService {
 // Price set price
 func (s *CreateOrderService) Price(price string) *CreateOrderService {
 	s.price = &price
+	return s
+}
+
+// PriceMatch set priceMatch
+func (s *CreateOrderService) PriceMatch(priceMatch PriceMatchType) *CreateOrderService {
+	s.priceMatch = &priceMatch
 	return s
 }
 
@@ -139,6 +147,12 @@ func (s *CreateOrderService) SelfTradePreventionMode(selfTradePreventionMode Sel
 	return s
 }
 
+// GoodTillDate set goodTillDate
+func (s *CreateOrderService) GoodTillDate(goodTillDate int64) *CreateOrderService {
+	s.goodTillDate = goodTillDate
+	return s
+}
+
 func (s *CreateOrderService) createOrder(ctx context.Context, endpoint string, opts ...RequestOption) (data []byte, header *http.Header, err error) {
 	r := &request{
 		method:   http.MethodPost,
@@ -166,8 +180,13 @@ func (s *CreateOrderService) createOrder(ctx context.Context, endpoint string, o
 	if s.price != nil {
 		m["price"] = *s.price
 	}
+	if s.priceMatch != nil {
+		m["priceMatch"] = *s.priceMatch
+	}
 	if s.newClientOrderID != nil {
 		m["newClientOrderId"] = *s.newClientOrderID
+	} else {
+		m["newClientOrderId"] = common.GenerateSwapId()
 	}
 	if s.stopPrice != nil {
 		m["stopPrice"] = *s.stopPrice
@@ -189,6 +208,9 @@ func (s *CreateOrderService) createOrder(ctx context.Context, endpoint string, o
 	}
 	if s.selfTradePreventionMode != nil {
 		m["selfTradePreventionMode"] = *s.selfTradePreventionMode
+	}
+	if s.goodTillDate > 0 && *s.timeInForce == TimeInForceTypeGTD {
+		m["goodTillDate"] = s.goodTillDate
 	}
 	r.setFormParams(m)
 	data, header, err = s.c.callAPI(ctx, r, opts...)
@@ -769,7 +791,9 @@ func (s *CancelMultiplesOrdersService) Do(ctx context.Context, opts ...RequestOp
 		r.setFormParam("orderIdList", orderIDListString)
 	}
 	if s.origClientOrderIDList != nil {
-		r.setFormParam("origClientOrderIdList", s.origClientOrderIDList)
+		// convert a slice of strings to a string e.g. ["my_id_1","my_id_2"], encode the double quotes. No space after comma.
+		origClientOrderIDListString := "[\"" + strings.Join(s.origClientOrderIDList, "\",\"") + "\"]"
+		r.setFormParam("origClientOrderIdList", origClientOrderIDListString)
 	}
 	data, _, err := s.c.callAPI(ctx, r, opts...)
 	if err != nil {
@@ -971,7 +995,7 @@ type CreateBatchOrdersResponse struct {
 	// List of orders which were placed successfully which can have a length between 0 and N
 	Orders []*Order
 	// List of errors of length N, where each item corresponds to a nil value if
-	// the order from that specific index was placed succeessfully OR an non-nil *APIError if there was an error with
+	// the order from that specific index was placed successfully OR an non-nil *APIError if there was an error with
 	// the order at that index
 	Errors []error
 }
@@ -1019,6 +1043,8 @@ func (s *CreateBatchOrdersService) Do(ctx context.Context, opts ...RequestOption
 		}
 		if order.newClientOrderID != nil {
 			m["newClientOrderId"] = *order.newClientOrderID
+		} else {
+			m["newClientOrderId"] = common.GenerateSwapId()
 		}
 		if order.stopPrice != nil {
 			m["stopPrice"] = *order.stopPrice
@@ -1153,7 +1179,7 @@ type ModifyBatchOrdersResponse struct {
 	// List of orders which were modified successfully which can have a length between 0 and N
 	Orders []*Order
 	// List of errors of length N, where each item corresponds to a nil value if
-	// the order from that specific index was placed succeessfully OR an non-nil *APIError if there was an error with
+	// the order from that specific index was placed successfully OR an non-nil *APIError if there was an error with
 	// the order at that index
 	Errors []error
 }
@@ -1198,6 +1224,8 @@ func (s *ModifyBatchOrdersService) Do(ctx context.Context, opts ...RequestOption
 		}
 		if order.origClientOrderID != nil {
 			m["origClientOrderId"] = *order.origClientOrderID
+		} else {
+			m["newClientOrderId"] = common.GenerateSwapId()
 		}
 		if order.priceMatch != nil {
 			m["priceMatch"] = *order.priceMatch

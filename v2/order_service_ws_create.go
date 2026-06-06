@@ -61,7 +61,7 @@ func NewOrderCreateWsRequest() *OrderCreateWsRequest {
 	return &OrderCreateWsRequest{}
 }
 
-func (s *OrderCreateWsRequest) GetParams() map[string]interface{} {
+func (s *OrderCreateWsRequest) GetParams() map[string]any {
 	return s.buildParams()
 }
 
@@ -84,6 +84,8 @@ func (s *OrderCreateWsRequest) buildParams() params {
 	}
 	if s.newClientOrderID != nil {
 		m["newClientOrderId"] = *s.newClientOrderID
+	} else {
+		m["newClientOrderId"] = common.GenerateSpotId()
 	}
 	if s.stopPrice != nil {
 		m["stopPrice"] = *s.stopPrice

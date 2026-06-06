@@ -34,6 +34,9 @@ var (
 
 	// KeepAlivePingDeadline defines deadline to send ping frame
 	KeepAlivePingDeadline = 10 * time.Second
+
+	// WaitCheckInternal defines interval for ticker when it checks pending requests while stop application
+	WaitCheckInternal = 300 * time.Millisecond
 )
 
 // messageId define id field of request/response
@@ -55,10 +58,14 @@ type client struct {
 	reconnectCount              int64
 }
 
-func (c *client) debug(format string, v ...interface{}) {
+func (c *client) debug(format string, v ...any) {
 	if c.Debug {
 		c.logger.Println(fmt.Sprintf(format, v...))
 	}
+}
+
+func (c *client) Close() error {
+	return c.conn.Close()
 }
 
 // NewClient init client
@@ -87,6 +94,7 @@ type Client interface {
 	GetReadErrorChannel() <-chan error
 	GetReconnectCount() int64
 	Wait(timeout time.Duration)
+	Close() error
 }
 
 // Write sends data into websocket connection
@@ -206,31 +214,22 @@ func (c *client) read() {
 // wait until all responses received
 // make sure that you are not sending requests
 func (c *client) wait(timeout time.Duration) {
-	doneC := make(chan struct{})
+	timeoutTimer := time.NewTimer(timeout)
+	defer timeoutTimer.Stop()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	checkTicker := time.NewTicker(WaitCheckInternal)
+	defer checkTicker.Stop()
 
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
+	for {
+		select {
+		case <-checkTicker.C:
+			if c.requestsList.Len() == 0 {
 				return
-			default:
-				if c.requestsList.Len() == 0 {
-					doneC <- struct{}{}
-					return
-				}
 			}
+		case <-timeoutTimer.C:
+			return
 		}
-	}()
-
-	t := time.After(timeout)
-	select {
-	case <-t:
-	case <-doneC:
 	}
-
-	cancel()
 }
 
 // handleReconnect waits for reconnect signal and starts reconnect
@@ -374,6 +373,7 @@ type Connection interface {
 	WriteMessage(messageType int, data []byte) error
 	ReadMessage() (messageType int, p []byte, err error)
 	RestoreConnection() (Connection, error)
+	Close() error
 }
 
 // WriteMessage is a thread-safe method for conn.WriteMessage
@@ -414,7 +414,7 @@ func (c *connection) keepAlive(timeout time.Duration) {
 
 			<-ticker.C
 			if c.isLastResponseOutdated(timeout) {
-				c.close()
+				c.Close()
 				return
 			}
 		}
@@ -436,7 +436,7 @@ func (c *connection) isLastResponseOutdated(timeout time.Duration) bool {
 }
 
 // close thread-safe method for closing connection
-func (c *connection) close() error {
+func (c *connection) Close() error {
 	c.connectionMu.Lock()
 	defer c.connectionMu.Unlock()
 	return c.conn.Close()

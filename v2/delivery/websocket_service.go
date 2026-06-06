@@ -13,22 +13,30 @@ import (
 var (
 	BaseWsMainUrl    = "wss://dstream.binance.com/ws"
 	BaseWsTestnetUrl = "wss://dstream.binancefuture.com/ws"
+	BaseWsDemoURL    = "wss://dstream.binancefuture.com/ws"
 )
 
 var (
 	// WebsocketTimeout is an interval for sending ping/pong messages if WebsocketKeepalive is enabled
-	WebsocketTimeout = time.Second * 60
+	WebsocketTimeout = time.Second * 600
+	// WebsocketPongTimeout is an interval for sending a PONG frame in response to PING frame from server
+	WebsocketPongTimeout = time.Second * 10
 	// WebsocketKeepalive enables sending ping/pong messages to check the connection stability
-	WebsocketKeepalive = false
+	WebsocketKeepalive = true
 	// UseTestnet switch all the WS streams from production to the testnet
 	UseTestnet = false
-	ProxyUrl   = ""
+	// UseDemo switch all the API endpoints from production to the demo
+	UseDemo  = false
+	ProxyUrl = ""
 )
 
 // getWsEndpoint return the base endpoint of the WS according the UseTestnet flag
 func getWsEndpoint() string {
 	if UseTestnet {
 		return BaseWsTestnetUrl
+	}
+	if UseDemo {
+		return BaseWsDemoURL
 	}
 	return BaseWsMainUrl
 }
@@ -675,7 +683,7 @@ type WsUserDataEvent struct {
 func (e *WsUserDataEvent) UnmarshalJSON(data []byte) error {
 	var tmp struct {
 		Event               UserDataEventType  `json:"e"`
-		Time                interface{}        `json:"E"`
+		Time                any                `json:"E"`
 		Alias               string             `json:"i"`
 		CrossWalletBalance  string             `json:"cw"`
 		MarginCallPositions []WsPosition       `json:"p"`

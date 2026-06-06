@@ -127,13 +127,22 @@ var (
 	BaseAPIMainURL    = "https://api.binance.com"
 	BaseAPIMainUSURL  = "https://api.binance.us"
 	BaseAPITestnetURL = "https://testnet.binance.vision"
+	BaseAPIDemoURL    = "https://demo-api.binance.com"
 )
 
 // SelfTradePreventionMode define self trade prevention strategy
 type SelfTradePreventionMode string
 
+// CancelReplaceMode define cancel replace mode
+type CancelReplaceMode string
+
+type MarginAccountBorrowRepayType string
+
 // UseTestnet switch all the API endpoints from production to the testnet
 var UseTestnet = false
+
+// UseDemo switch all the API endpoints from production to the demo
+var UseDemo = false
 
 // UseUSDomain switch all the API endpoints from production to the binance.us
 var UseUSDomain = false
@@ -214,9 +223,10 @@ const (
 	FuturesTransferStatusTypeConfirmed FuturesTransferStatusType = "CONFIRMED"
 	FuturesTransferStatusTypeFailed    FuturesTransferStatusType = "FAILED"
 
-	SideEffectTypeNoSideEffect SideEffectType = "NO_SIDE_EFFECT"
-	SideEffectTypeMarginBuy    SideEffectType = "MARGIN_BUY"
-	SideEffectTypeAutoRepay    SideEffectType = "AUTO_REPAY"
+	SideEffectTypeNoSideEffect    SideEffectType = "NO_SIDE_EFFECT"
+	SideEffectTypeMarginBuy       SideEffectType = "MARGIN_BUY"
+	SideEffectTypeAutoRepay       SideEffectType = "AUTO_REPAY"
+	SideEffectTypeAutoBorrowRepay SideEffectType = "AUTO_BORROW_REPAY"
 
 	TransactionTypeDeposit  TransactionType = "0"
 	TransactionTypeWithdraw TransactionType = "1"
@@ -325,6 +335,16 @@ const (
 	SelfTradePreventionModeExpireTaker SelfTradePreventionMode = "EXPIRE_TAKER"
 	SelfTradePreventionModeExpireBoth  SelfTradePreventionMode = "EXPIRE_BOTH"
 	SelfTradePreventionModeExpireMaker SelfTradePreventionMode = "EXPIRE_MAKER"
+
+	CancelReplaceModeStopOnFailure CancelReplaceMode = "STOP_ON_FAILURE"
+	CancelReplaceModeAllowFailure  CancelReplaceMode = "ALLOW_FAILURE"
+
+	MarginAccountBorrow MarginAccountBorrowRepayType = "BORROW"
+	MarginAccountRepay  MarginAccountBorrowRepayType = "REPAY"
+
+	MarginAccountBorrowRepayStatusPending   string = "PENDING"
+	MarginAccountBorrowRepayStatusConfirmed string = "CONFIRMED"
+	MarginAccountBorrowRepayStatusFailed    string = "FAILED"
 )
 
 func currentTimestamp() int64 {
@@ -348,6 +368,9 @@ func newJSON(data []byte) (j *simplejson.Json, err error) {
 func getAPIEndpoint() string {
 	if UseTestnet {
 		return BaseAPITestnetURL
+	}
+	if UseDemo {
+		return BaseAPIDemoURL
 	}
 	if UseUSDomain {
 		return BaseAPIMainUSURL
@@ -422,9 +445,12 @@ type Client struct {
 	Logger     *log.Logger
 	TimeOffset int64
 	do         doFunc
+
+	UsedWeight common.UsedWeight
+	OrderCount common.OrderCount
 }
 
-func (c *Client) debug(format string, v ...interface{}) {
+func (c *Client) debug(format string, v ...any) {
 	if c.Debug {
 		c.Logger.Printf(format, v...)
 	}
@@ -518,6 +544,10 @@ func (c *Client) callAPI(ctx context.Context, r *request, opts ...RequestOption)
 	if err != nil {
 		return []byte{}, err
 	}
+
+	c.UsedWeight.UpdateByHeader(res.Header)
+	c.OrderCount.UpdateByHeader(res.Header)
+
 	data, err = io.ReadAll(res.Body)
 	if err != nil {
 		return []byte{}, err
@@ -642,6 +672,11 @@ func (c *Client) NewCancelOrderService() *CancelOrderService {
 	return &CancelOrderService{c: c}
 }
 
+// NewCancelReplaceOrderService init cancel replace order service
+func (c *Client) NewCancelReplaceOrderService() *CancelReplaceOrderService {
+	return &CancelReplaceOrderService{c: c}
+}
+
 // NewCancelOpenOrdersService init cancel open orders service
 func (c *Client) NewCancelOpenOrdersService() *CancelOpenOrdersService {
 	return &CancelOpenOrdersService{c: c}
@@ -665,6 +700,11 @@ func (c *Client) NewListOrdersService() *ListOrdersService {
 // NewGetAccountService init getting account service
 func (c *Client) NewGetAccountService() *GetAccountService {
 	return &GetAccountService{c: c}
+}
+
+// NewGetCommissionRatesService init getting commission rates service
+func (c *Client) NewGetCommissionRatesService() *GetCommissionRatesService {
+	return &GetCommissionRatesService{c: c}
 }
 
 // NewGetAPIKeyPermission init getting API key permission
@@ -767,6 +807,14 @@ func (c *Client) NewGetAssetDetailService() *GetAssetDetailService {
 	return &GetAssetDetailService{c: c}
 }
 
+func (c *Client) NewWalletBalanceService() *WalletBalanceService {
+	return &WalletBalanceService{c: c}
+}
+
+func (c *Client) NewGetFundingAssetService() *GetFundingAssetService {
+	return &GetFundingAssetService{c: c}
+}
+
 // NewAveragePriceService init average price service
 func (c *Client) NewAveragePriceService() *AveragePriceService {
 	return &AveragePriceService{c: c}
@@ -778,13 +826,24 @@ func (c *Client) NewMarginTransferService() *MarginTransferService {
 }
 
 // NewMarginLoanService init margin account loan service
+// Deprecated: use NewMarginBorrowRepayService instead
 func (c *Client) NewMarginLoanService() *MarginLoanService {
 	return &MarginLoanService{c: c}
 }
 
 // NewMarginRepayService init margin account repay service
+// Deprecated: use NewMarginBorrowRepayService instead
 func (c *Client) NewMarginRepayService() *MarginRepayService {
 	return &MarginRepayService{c: c}
+}
+
+// NewMarginBorrowRepayService init margin account borrow/repay service
+func (c *Client) NewMarginBorrowRepayService() *MarginBorrowRepayService {
+	return &MarginBorrowRepayService{c: c}
+}
+
+func (c *Client) NewListMarginBorrowRepayService() *ListMarginBorrowRepayService {
+	return &ListMarginBorrowRepayService{c: c}
 }
 
 // NewCreateMarginOrderService init creating margin order service
@@ -795,6 +854,11 @@ func (c *Client) NewCreateMarginOrderService() *CreateMarginOrderService {
 // NewCancelMarginOrderService init cancel order service
 func (c *Client) NewCancelMarginOrderService() *CancelMarginOrderService {
 	return &CancelMarginOrderService{c: c}
+}
+
+// NewCancelAllMarginOrdersService init cancel all orders service
+func (c *Client) NewCancelAllMarginOrdersService() *CancelAllMarginOrdersService {
+	return &CancelAllMarginOrdersService{c: c}
 }
 
 // NewCreateMarginOCOService init creating margin order service
@@ -813,11 +877,13 @@ func (c *Client) NewGetMarginOrderService() *GetMarginOrderService {
 }
 
 // NewListMarginLoansService init list margin loan service
+// Deprecated: use NewListMarginBorrowRepayService instead
 func (c *Client) NewListMarginLoansService() *ListMarginLoansService {
 	return &ListMarginLoansService{c: c}
 }
 
 // NewListMarginRepaysService init list margin repay service
+// Deprecated: use NewListMarginBorrowRepayService instead
 func (c *Client) NewListMarginRepaysService() *ListMarginRepaysService {
 	return &ListMarginRepaysService{c: c}
 }
@@ -909,6 +975,26 @@ func (c *Client) NewKeepaliveIsolatedMarginUserStreamService() *KeepaliveIsolate
 // NewCloseIsolatedMarginUserStreamService init closing margin user stream service
 func (c *Client) NewCloseIsolatedMarginUserStreamService() *CloseIsolatedMarginUserStreamService {
 	return &CloseIsolatedMarginUserStreamService{c: c}
+}
+
+// NewMarginInterestHistoryService init margin interest history service
+func (c *Client) NewMarginInterestHistoryService() *MarginInterestHistoryService {
+	return &MarginInterestHistoryService{c: c}
+}
+
+// NewMarginInterestRateHistoryService init margin interest rate history service
+func (c *Client) NewMarginInterestRateHistoryService() *MarginInterestRateHistoryService {
+	return &MarginInterestRateHistoryService{c: c}
+}
+
+// NewMarginNextHourlyInterestRateService init margin next hourly interest rate service
+func (c *Client) NewMarginNextHourlyInterestRateService() *MarginNextHourlyInterestRateService {
+	return &MarginNextHourlyInterestRateService{c: c}
+}
+
+// NewMarginAvailableInventoryService init margin available inventory service
+func (c *Client) NewMarginAvailableInventoryService() *MarginAvailableInventoryService {
+	return &MarginAvailableInventoryService{c: c}
 }
 
 // NewFuturesTransferService init futures transfer service
@@ -1378,3 +1464,47 @@ func (c *Client) NewSimpleEarnService() *SimpleEarnService {
 }
 
 // ----- end simple earn service -----
+
+func (c *Client) NewDualInvestmentService() *DualInvestmentService {
+	return &DualInvestmentService{c: c}
+}
+
+// NewOrderCreateWsService init order creation websocket service
+func (c *Client) NewOrderCreateWsService() (*OrderCreateWsService, error) {
+	return NewOrderCreateWsService(c.APIKey, c.SecretKey)
+}
+
+// NewOrderListCreateWsService init order list creation websocket service (OCO)
+func (c *Client) NewOrderListCreateWsService() (*OrderListCreateWsService, error) {
+	return NewOrderListCreateWsService(c.APIKey, c.SecretKey)
+}
+
+// NewOrderListPlaceWsService init order list placement websocket service (deprecated OCO)
+func (c *Client) NewOrderListPlaceWsService() (*OrderListPlaceWsService, error) {
+	return NewOrderListPlaceWsService(c.APIKey, c.SecretKey)
+}
+
+// NewOrderListPlaceOtoWsService init order list placement websocket service (OTO)
+func (c *Client) NewOrderListPlaceOtoWsService() (*OrderListPlaceOtoWsService, error) {
+	return NewOrderListPlaceOtoWsService(c.APIKey, c.SecretKey)
+}
+
+// NewOrderListPlaceOtocoWsService init order list placement websocket service (OTOCO)
+func (c *Client) NewOrderListPlaceOtocoWsService() (*OrderListPlaceOtocoWsService, error) {
+	return NewOrderListPlaceOtocoWsService(c.APIKey, c.SecretKey)
+}
+
+// NewOrderListCancelWsService init order list cancellation websocket service
+func (c *Client) NewOrderListCancelWsService() (*OrderListCancelWsService, error) {
+	return NewOrderListCancelWsService(c.APIKey, c.SecretKey)
+}
+
+// NewSorOrderPlaceWsService init SOR order placement websocket service
+func (c *Client) NewSorOrderPlaceWsService() (*SorOrderPlaceWsService, error) {
+	return NewSorOrderPlaceWsService(c.APIKey, c.SecretKey)
+}
+
+// NewSorOrderTestWsService init SOR order testing websocket service
+func (c *Client) NewSorOrderTestWsService() (*SorOrderTestWsService, error) {
+	return NewSorOrderTestWsService(c.APIKey, c.SecretKey)
+}

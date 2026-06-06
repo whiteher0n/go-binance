@@ -84,7 +84,7 @@ func (m *MockClient) Wait(timeout time.Duration) {
 }
 
 // Wait indicates an expected call of Wait.
-func (mr *MockClientMockRecorder) Wait(timeout interface{}) *gomock.Call {
+func (mr *MockClientMockRecorder) Wait(timeout any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Wait", reflect.TypeOf((*MockClient)(nil).Wait), timeout)
 }
@@ -98,7 +98,7 @@ func (m *MockClient) Write(id string, data []byte) error {
 }
 
 // Write indicates an expected call of Write.
-func (mr *MockClientMockRecorder) Write(id, data interface{}) *gomock.Call {
+func (mr *MockClientMockRecorder) Write(id, data any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Write", reflect.TypeOf((*MockClient)(nil).Write), id, data)
 }
@@ -112,8 +112,15 @@ func (m *MockClient) WriteSync(id string, data []byte, timeout time.Duration) ([
 	return ret0, ret1
 }
 
+func (m *MockClient) Close() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Close")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
 // WriteSync indicates an expected call of WriteSync.
-func (mr *MockClientMockRecorder) WriteSync(id, data, timeout interface{}) *gomock.Call {
+func (mr *MockClientMockRecorder) WriteSync(id, data, timeout any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteSync", reflect.TypeOf((*MockClient)(nil).WriteSync), id, data, timeout)
 }
@@ -181,7 +188,7 @@ func (m *MockConnection) WriteMessage(messageType int, data []byte) error {
 }
 
 // WriteMessage indicates an expected call of WriteMessage.
-func (mr *MockConnectionMockRecorder) WriteMessage(messageType, data interface{}) *gomock.Call {
+func (mr *MockConnectionMockRecorder) WriteMessage(messageType, data any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteMessage", reflect.TypeOf((*MockConnection)(nil).WriteMessage), messageType, data)
 }

@@ -80,6 +80,7 @@ type SelfTradePreventionMode string
 var (
 	BaseApiMainUrl    = "https://fapi.binance.com"
 	BaseApiTestnetUrl = "https://testnet.binancefuture.com"
+	BaseApiDemoURL    = "https://testnet.binancefuture.com"
 )
 
 // Global enums
@@ -91,19 +92,16 @@ const (
 	PositionSideTypeLong  PositionSideType = "LONG"
 	PositionSideTypeShort PositionSideType = "SHORT"
 
-	OrderTypeLimit              OrderType = "LIMIT"
-	OrderTypeMarket             OrderType = "MARKET"
-	OrderTypeStop               OrderType = "STOP"
-	OrderTypeStopMarket         OrderType = "STOP_MARKET"
-	OrderTypeTakeProfit         OrderType = "TAKE_PROFIT"
-	OrderTypeTakeProfitMarket   OrderType = "TAKE_PROFIT_MARKET"
-	OrderTypeTrailingStopMarket OrderType = "TRAILING_STOP_MARKET"
-	OrderTypeLiquidation        OrderType = "LIQUIDATION"
+	OrderTypeLimit       OrderType = "LIMIT"
+	OrderTypeMarket      OrderType = "MARKET"
+	OrderTypeLiquidation OrderType = "LIQUIDATION"
 
-	TimeInForceTypeGTC TimeInForceType = "GTC" // Good Till Cancel
-	TimeInForceTypeIOC TimeInForceType = "IOC" // Immediate or Cancel
-	TimeInForceTypeFOK TimeInForceType = "FOK" // Fill or Kill
-	TimeInForceTypeGTX TimeInForceType = "GTX" // Good Till Crossing (Post Only)
+	TimeInForceTypeGTC    TimeInForceType = "GTC"     // Good Till Cancel
+	TimeInForceTypeGTD    TimeInForceType = "GTD"     // Good Till Date
+	TimeInForceTypeGTEGTC TimeInForceType = "GTE_GTC" // https://github.com/ccxt/go-binance/issues/681
+	TimeInForceTypeIOC    TimeInForceType = "IOC"     // Immediate or Cancel
+	TimeInForceTypeFOK    TimeInForceType = "FOK"     // Fill or Kill
+	TimeInForceTypeGTX    TimeInForceType = "GTX"     // Good Till Crossing (Post Only)
 
 	NewOrderRespTypeACK    NewOrderRespType = "ACK"
 	NewOrderRespTypeRESULT NewOrderRespType = "RESULT"
@@ -163,16 +161,19 @@ const (
 	MarginTypeIsolated MarginType = "ISOLATED"
 	MarginTypeCrossed  MarginType = "CROSSED"
 
-	ContractTypePerpetual      ContractType = "PERPETUAL"
-	ContractTypeCurrentQuarter ContractType = "CURRENT_QUARTER"
-	ContractTypeNextQuarter    ContractType = "NEXT_QUARTER"
+	ContractTypePerpetual        ContractType = "PERPETUAL"
+	ContractTypeCurrentQuarter   ContractType = "CURRENT_QUARTER"
+	ContractTypeNextQuarter      ContractType = "NEXT_QUARTER"
+	ContractTypeTradifiPerpetual ContractType = "TRADIFI_PERPETUAL"
 
-	UserDataEventTypeListenKeyExpired    UserDataEventType = "listenKeyExpired"
-	UserDataEventTypeMarginCall          UserDataEventType = "MARGIN_CALL"
-	UserDataEventTypeAccountUpdate       UserDataEventType = "ACCOUNT_UPDATE"
-	UserDataEventTypeOrderTradeUpdate    UserDataEventType = "ORDER_TRADE_UPDATE"
-	UserDataEventTypeAccountConfigUpdate UserDataEventType = "ACCOUNT_CONFIG_UPDATE"
-	UserDataEventTypeTradeLite           UserDataEventType = "TRADE_LITE"
+	UserDataEventTypeListenKeyExpired              UserDataEventType = "listenKeyExpired"
+	UserDataEventTypeMarginCall                    UserDataEventType = "MARGIN_CALL"
+	UserDataEventTypeAccountUpdate                 UserDataEventType = "ACCOUNT_UPDATE"
+	UserDataEventTypeOrderTradeUpdate              UserDataEventType = "ORDER_TRADE_UPDATE"
+	UserDataEventTypeAccountConfigUpdate           UserDataEventType = "ACCOUNT_CONFIG_UPDATE"
+	UserDataEventTypeTradeLite                     UserDataEventType = "TRADE_LITE"
+	UserDataEventTypeConditionalOrderTriggerReject UserDataEventType = "CONDITIONAL_ORDER_TRIGGER_REJECT"
+	UserDataEventTypeAlgoUpdate                    UserDataEventType = "ALGO_UPDATE"
 
 	UserDataEventReasonTypeDeposit             UserDataEventReasonType = "DEPOSIT"
 	UserDataEventReasonTypeWithdraw            UserDataEventReasonType = "WITHDRAW"
@@ -218,6 +219,9 @@ func newJSON(data []byte) (j *simplejson.Json, err error) {
 func getApiEndpoint() string {
 	if UseTestnet {
 		return BaseApiTestnetUrl
+	}
+	if UseDemo {
+		return BaseApiDemoURL
 	}
 	return BaseApiMainUrl
 }
@@ -274,9 +278,12 @@ type Client struct {
 	Logger     *log.Logger
 	TimeOffset int64
 	do         doFunc
+
+	UsedWeight common.UsedWeight
+	OrderCount common.OrderCount
 }
 
-func (c *Client) debug(format string, v ...interface{}) {
+func (c *Client) debug(format string, v ...any) {
 	if c.Debug {
 		c.Logger.Printf(format, v...)
 	}
@@ -366,6 +373,10 @@ func (c *Client) callAPI(ctx context.Context, r *request, opts ...RequestOption)
 	if err != nil {
 		return []byte{}, &http.Header{}, err
 	}
+
+	c.UsedWeight.UpdateByHeader(res.Header)
+	c.OrderCount.UpdateByHeader(res.Header)
+
 	data, err = io.ReadAll(res.Body)
 	if err != nil {
 		return []byte{}, &http.Header{}, err
@@ -527,17 +538,32 @@ func (c *Client) NewGetAccountService() *GetAccountService {
 	return &GetAccountService{c: c}
 }
 
+// NewGetAccountV3Service init getting account service
+func (c *Client) NewGetAccountV3Service() *GetAccountV3Service {
+	return &GetAccountV3Service{c: c}
+}
+
 // NewGetBalanceService init getting balance service
 func (c *Client) NewGetBalanceService() *GetBalanceService {
 	return &GetBalanceService{c: c}
 }
 
-func (c *Client) NewGetPositionRiskV2Service() *GetPositionRiskV2Service {
-	return &GetPositionRiskV2Service{c: c}
+// NewGetAccountConfigService init get futures account configuration service
+func (c *Client) NewGetAccountConfigService() *AccountConfigService {
+	return &AccountConfigService{c: c}
+}
+
+// NewGetSymbolConfigService init get futures symbol configuration service
+func (c *Client) NewGetSymbolConfigService() *SymbolConfigService {
+	return &SymbolConfigService{c: c}
 }
 
 func (c *Client) NewGetPositionRiskService() *GetPositionRiskService {
 	return &GetPositionRiskService{c: c}
+}
+
+func (c *Client) NewGetPositionRiskV3Service() *GetPositionRiskV3Service {
+	return &GetPositionRiskV3Service{c: c}
 }
 
 // NewGetPositionMarginHistoryService init getting position margin history service
@@ -737,4 +763,39 @@ func (c *Client) NewConvertAcceptService() *ConvertAcceptService {
 // NewGetConvertStatusService init get convert status service
 func (c *Client) NewGetConvertStatusService() *ConvertStatusService {
 	return &ConvertStatusService{c: c}
+}
+
+// NewApiTradingStatusService init get api trading status service
+func (c *Client) NewApiTradingStatusService() *ApiTradingStatusService {
+	return &ApiTradingStatusService{c: c}
+}
+
+// NewCreateAlgoOrderService init create algo order service
+func (c *Client) NewCreateAlgoOrderService() *CreateAlgoOrderService {
+	return newCreateAlgoOrderService(c)
+}
+
+// NewCancelAlgoOrderService init cancel algo order service
+func (c *Client) NewCancelAlgoOrderService() *CancelAlgoOrderService {
+	return &CancelAlgoOrderService{c: c}
+}
+
+// NewCancelAllAlgoOpenOrdersService init cancel all algo open orders service
+func (c *Client) NewCancelAllAlgoOpenOrdersService() *CancelAllAlgoOpenOrdersService {
+	return &CancelAllAlgoOpenOrdersService{c: c}
+}
+
+// NewGetAlgoOrderService init get algo order service
+func (c *Client) NewGetAlgoOrderService() *GetAlgoOrderService {
+	return &GetAlgoOrderService{c: c}
+}
+
+// NewListOpenAlgoOrdersService init list open algo orders service
+func (c *Client) NewListOpenAlgoOrdersService() *ListOpenAlgoOrdersService {
+	return &ListOpenAlgoOrdersService{c: c}
+}
+
+// NewGetAllAlgoOrdersService init get all algo orders service
+func (c *Client) NewListAllAlgoOrdersService() *ListAllAlgoOrdersService {
+	return &ListAllAlgoOrdersService{c: c}
 }

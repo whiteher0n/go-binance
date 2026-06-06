@@ -34,3 +34,5 @@ jobs:
       run: ./check.sh vet
     - name: UnitTest
       run: ./check.sh unittest
+    # - name: IntegrationTest
+    #   run: ./check.sh integration

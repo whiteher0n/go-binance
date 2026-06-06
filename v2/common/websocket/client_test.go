@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"net"
 	"net/http"
 	"testing"
 	"time"
@@ -15,9 +16,9 @@ import (
 )
 
 type testApiRequest struct {
-	Id     string                 `json:"id"`
-	Method string                 `json:"method"`
-	Params map[string]interface{} `json:"params"`
+	Id     string         `json:"id"`
+	Method string         `json:"method"`
+	Params map[string]any `json:"params"`
 }
 
 func (s *clientTestSuite) SetupTest() {
@@ -37,12 +38,15 @@ func TestClient(t *testing.T) {
 
 func (s *clientTestSuite) TestReadWriteSync() {
 	stopCh := make(chan struct{})
+	readyCh := make(chan struct{})
 	go func() {
-		startWsTestServer(stopCh)
+		startWsTestServer(stopCh, readyCh)
 	}()
 	defer func() {
 		stopCh <- struct{}{}
 	}()
+
+	<-readyCh
 
 	conn, err := NewConnection(func() (*websocket.Conn, error) {
 		Dialer := websocket.Dialer{
@@ -77,7 +81,7 @@ func (s *clientTestSuite) TestReadWriteSync() {
 				req := testApiRequest{
 					Id:     requestID,
 					Method: "some-method",
-					Params: map[string]interface{}{},
+					Params: map[string]any{},
 				}
 				reqRaw, err := json.Marshal(req)
 				s.Require().NoError(err)
@@ -97,7 +101,7 @@ func (s *clientTestSuite) TestReadWriteSync() {
 				req := testApiRequest{
 					Id:     "some-other-request-id",
 					Method: "some-method",
-					Params: map[string]interface{}{},
+					Params: map[string]any{},
 				}
 				reqRaw, err := json.Marshal(req)
 				s.Require().NoError(err)
@@ -108,7 +112,7 @@ func (s *clientTestSuite) TestReadWriteSync() {
 				req = testApiRequest{
 					Id:     requestID,
 					Method: "some-method",
-					Params: map[string]interface{}{},
+					Params: map[string]any{},
 				}
 				reqRaw, err = json.Marshal(req)
 				s.Require().NoError(err)
@@ -128,7 +132,7 @@ func (s *clientTestSuite) TestReadWriteSync() {
 				req := testApiRequest{
 					Id:     requestID,
 					Method: "some-method",
-					Params: map[string]interface{}{
+					Params: map[string]any{
 						"timeout": "true",
 					},
 				}
@@ -150,7 +154,7 @@ func (s *clientTestSuite) TestReadWriteSync() {
 				req := testApiRequest{
 					Id:     requestID,
 					Method: "some-method",
-					Params: map[string]interface{}{},
+					Params: map[string]any{},
 				}
 				reqRaw, err := json.Marshal(req)
 				s.Require().NoError(err)
@@ -231,16 +235,20 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func startWsTestServer(stopCh chan struct{}) {
-	server := &http.Server{
-		Addr: ":8080",
-	}
+func startWsTestServer(stopCh chan struct{}, readyCh chan struct{}) {
+	server := &http.Server{}
 
 	http.HandleFunc("/ws", wsHandler)
 	log.Println("WebSocket server started on :8080")
 
 	go func() {
-		if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
+		lis, err := net.Listen("tcp", "localhost:8080")
+		if err != nil {
+			log.Fatalf("WebSocket server error: %v", err)
+		}
+		close(readyCh)
+
+		if err := server.Serve(lis); !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("WebSocket server error: %v", err)
 		}
 		log.Println("Stopped serving new connections.")
