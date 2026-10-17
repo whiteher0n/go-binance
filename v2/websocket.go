@@ -110,11 +110,22 @@ func keepAlive(c *websocket.Conn, timeout time.Duration) {
 
 	go func() {
 		defer ticker.Stop()
+		ping := time.NewTicker(WebsocketPingInterval)
+		defer ping.Stop()
 		for {
-			<-ticker.C
-			if time.Since(lastResponse) > timeout {
-				c.Close()
-				return
+			select {
+			case <-ping.C:
+				// A PING that can't be written in time means the connection is dead: close it so the
+				// read loop returns an error and the caller reconnects.
+				if err := c.WriteControl(websocket.PingMessage, nil, time.Now().Add(WebsocketPongTimeout)); err != nil {
+					c.Close()
+					return
+				}
+			case <-ticker.C:
+				if time.Since(lastResponse) > timeout {
+					c.Close()
+					return
+				}
 			}
 		}
 	}()

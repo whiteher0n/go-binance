@@ -30,6 +30,11 @@ var (
 	WebsocketTimeout = time.Second * 60
 	// WebsocketPongTimeout is an interval for sending a PONG frame in response to PING frame from server
 	WebsocketPongTimeout = time.Second * 10
+	// WebsocketPingInterval is how often the client sends its own PING frame if WebsocketKeepalive is
+	// enabled (must be > 0). Binance pings some streams only every few minutes, so a quiet stream
+	// (e.g. forceOrder) can carry no traffic for longer than a network path's idle timeout; some VPN
+	// paths drop a connection after 60 s without data.
+	WebsocketPingInterval = time.Second * 30
 	// WebsocketKeepalive enables sending ping/pong messages to check the connection stability
 	WebsocketKeepalive = true
 	// WebsocketTimeoutReadWriteConnection is an interval for sending ping/pong messages if WebsocketKeepalive is enabled
