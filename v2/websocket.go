@@ -3,6 +3,7 @@ package binance
 import (
 	"net/http"
 	"net/url"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -90,7 +91,10 @@ var wsServe = func(cfg *WsConfig, handler WsHandler, errHandler ErrHandler) (don
 func keepAlive(c *websocket.Conn, timeout time.Duration) {
 	ticker := time.NewTicker(timeout)
 
-	lastResponse := time.Now()
+	// Written by the PING handler (read goroutine), read by the checker below. time.Time in an
+	// atomic.Value keeps its monotonic reading, so the check is immune to wall-clock steps.
+	var lastResponse atomic.Value
+	lastResponse.Store(time.Now())
 
 	c.SetPingHandler(func(pingData string) error {
 		// Respond with Pong using the server's PING payload
@@ -103,7 +107,7 @@ func keepAlive(c *websocket.Conn, timeout time.Duration) {
 			return err
 		}
 
-		lastResponse = time.Now()
+		lastResponse.Store(time.Now())
 
 		return nil
 	})
@@ -122,7 +126,7 @@ func keepAlive(c *websocket.Conn, timeout time.Duration) {
 					return
 				}
 			case <-ticker.C:
-				if time.Since(lastResponse) > timeout {
+				if time.Since(lastResponse.Load().(time.Time)) > timeout {
 					c.Close()
 					return
 				}
